@@ -5,57 +5,47 @@
 #include <QDebug>
 #include <QGraphicsLineItem>
 #include <QtMath>
+#include <QThread>
 
-bool GraphicsView::TileSpec::operator <(const GraphicsView::TileSpec &rhs) const
+bool MudMap::TileSpec::operator <(const MudMap::TileSpec &rhs) const
 {
     return ((this->zoom<<24) + (this->x << 8) + this->y) < ((rhs.zoom<<24) + (rhs.x << 8) + rhs.y);
 }
 
-GraphicsView::GraphicsView(QGraphicsScene *scene) : QGraphicsView(scene)
+bool MudMap::TileSpec::operator==(const MudMap::TileSpec &rhs) const
 {
-    addTile({0, 0, 0});
+    return (this->zoom == rhs.zoom) && (this->x == rhs.x) && (this->y == rhs.y);
 }
 
-QGraphicsPixmapItem *GraphicsView::addTile(const GraphicsView::TileSpec &tile)
+MudMap::MudMap(QGraphicsScene *scene) : QGraphicsView(scene)
 {
-    const int tileOff = 256;
-    if(m_tiles.contains(tile))
-        return m_tiles.value(tile);
-    //
+    qRegisterMetaType<MudMap::TileSpec>("MudMap::TileSpec");
+    MudMapThread *mapThread = new MudMapThread;
+    connect(this, &QObject::destroyed, mapThread, &MudMapThread::deleteLater);
+    connect(this, &MudMap::tileRequested, mapThread, &MudMapThread::requestTile, Qt::QueuedConnection);
+    connect(mapThread, &MudMapThread::tileToAdd, this->scene(), &QGraphicsScene::addItem, Qt::QueuedConnection);
+    connect(mapThread, &MudMapThread::tileToRemove, this->scene(), &QGraphicsScene::removeItem, Qt::QueuedConnection);
     QString fileName = QString("E:/arcgis/%1/%2/%3.jpg")
-            .arg(tile.zoom)
-            .arg(tile.x)
-            .arg(tile.y);
-    auto tileItem = this->scene()->addPixmap(fileName);
-    tileItem->setZValue(tile.zoom);
-    //
-    int rowColNum = qPow(2, tile.zoom);
-    double xOff = tileOff * tile.x;
-    double yOff = tileOff * (rowColNum - tile.y -1);
-    double scaleFac = 1.0 / rowColNum;
-    QTransform transform;
-    transform.scale(scaleFac, scaleFac)
-            .translate(xOff, yOff);
-    tileItem->setTransform(transform);
-    m_tiles.insert(tile, tileItem);
-    return tileItem;
+            .arg(0)
+            .arg(0)
+            .arg(0);
+    this->scene()->addPixmap(fileName);
 }
 
-void GraphicsView::wheelEvent(QWheelEvent *e)
+void MudMap::wheelEvent(QWheelEvent *e)
 {
     if (e->delta() > 0)
-        scale(5.0/4, 5.0/4);
+        scale(10.0/9, 10.0/9);
     else
-        scale(4.0/5, 4.0/5);
+        scale(9.0/10, 9.0/10);
     fitTile();
 }
 
-void GraphicsView::fitTile()
+void MudMap::fitTile()
 {
     qreal curZoom = qLn(transform().m11()) / qLn(2);
-    qDebug()<<curZoom;
+    int intZoom = qCeil(curZoom);
     //
-    int intZoom = int(curZoom);
     int tileLen = qPow(2, intZoom);
     auto topLeftPos = mapToScene(viewport()->geometry().topLeft());
     auto bottomRightPos = mapToScene(viewport()->geometry().bottomRight());
@@ -63,35 +53,88 @@ void GraphicsView::fitTile()
     int xEnd = bottomRightPos.x() / 256 * tileLen;
     int yBegin = topLeftPos.y() / 256 * tileLen;
     int yEnd = bottomRightPos.y() / 256 * tileLen;
-    qDebug()<<xBegin<<xEnd<<yBegin<<yEnd;
+    emit tileRequested({intZoom, xBegin, yBegin}, {intZoom, xEnd, yEnd});
+
+}
+
+MudMapThread::MudMapThread()
+{
+    QThread *thread = new QThread;
+    this->moveToThread(thread);
+    thread->start();
+}
+
+void MudMapThread::requestTile(const MudMap::TileSpec &topLeft, const MudMap::TileSpec &bottomRight)
+{
+    if(m_preTopLeft == topLeft && m_preBottomRight == bottomRight)
+        return;
+    m_preTopLeft = topLeft;
+    m_preBottomRight = bottomRight;
+
+    // y向下递增
+    const int &zoom = topLeft.zoom;
+    int xBegin = topLeft.x;
+    int xEnd = bottomRight.x;
+    int yBegin = topLeft.y;
+    int yEnd = bottomRight.y;
+    QSet<MudMap::TileSpec> visibleTilesSet;
     for(int x = xBegin; x < xEnd; ++x) {
         for(int y = yBegin; y < yEnd; ++y) {
-            addTile({intZoom, x, tileLen - y - 1});
+            visibleTilesSet.insert({zoom, x, y});
+        }
+    }
+
+    // need to load new tile to scene
+    {
+        auto newTiles = visibleTilesSet - m_tileSpecSet;
+        QSetIterator<MudMap::TileSpec> i(newTiles);
+        while (i.hasNext()) {
+            auto tileSpec = i.next();
+            auto tileItem = loadTile(tileSpec);
+            m_tileSpecSet.insert(tileSpec);
+            m_tiles.insert(tileSpec, tileItem);
+            emit tileToAdd(tileItem);
+        }
+    }
+
+    // need to remove from scene
+    {
+        auto invisibleTiles = m_tileSpecSet - visibleTilesSet;
+        QSetIterator<MudMap::TileSpec> i(invisibleTiles);
+        while (i.hasNext()) {
+            auto tileSpec = i.next();
+            m_tileSpecSet.remove(tileSpec);     // remove1
+            auto tileItem = m_tiles.take(tileSpec); // remove 2
+            emit tileToRemove(tileItem);
         }
     }
 }
 
-MudMap::MudMap(QWidget *parent)
-    : QWidget(parent)
+MudMapThread::~MudMapThread()
 {
-    // scene and view
-    m_scene = new QGraphicsScene(this);
-    m_view = new GraphicsView(m_scene);
-    m_view->setDragMode(QGraphicsView::ScrollHandDrag);
-    m_view->setRenderHint(QPainter::Antialiasing, false);
-    m_view->setOptimizationFlags(QGraphicsView::DontSavePainterState);
-    m_view->setViewportUpdateMode(QGraphicsView::SmartViewportUpdate);
-    m_view->setTransformationAnchor(QGraphicsView::AnchorUnderMouse);
-    m_view->setHorizontalScrollBarPolicy(Qt::ScrollBarPolicy::ScrollBarAlwaysOff);
-    m_view->setVerticalScrollBarPolicy(Qt::ScrollBarPolicy::ScrollBarAlwaysOff);
-    m_view->setViewport(new QOpenGLWidget);
-
-    // let view show full with parent(that's such class)
-    QHBoxLayout *layout = new QHBoxLayout(this);
-    layout->addWidget(m_view);
-    layout->setContentsMargins(0, 0, 0, 0);
+    this->thread()->quit();
+    this->thread()->wait();
+    delete this->thread();
 }
 
-MudMap::~MudMap()
+QGraphicsPixmapItem *MudMapThread::loadTile(const MudMap::TileSpec &tile)
 {
+    const int tileOff = 256;
+    int tileLen = qPow(2, tile.zoom);
+    //
+    QString fileName = QString("E:/arcgis/%1/%2/%3.jpg")
+            .arg(tile.zoom)
+            .arg(tile.x)
+            .arg(tileLen - tile.y -1);
+    auto tileItem = new QGraphicsPixmapItem(fileName);
+    tileItem->setZValue(tile.zoom);
+    //
+    double xOff = tileOff * tile.x;
+    double yOff = tileOff * tile.y;
+    double scaleFac = 1.0 / tileLen;
+    QTransform transform;
+    transform.scale(scaleFac, scaleFac)
+            .translate(xOff, yOff);
+    tileItem->setTransform(transform);
+    return tileItem;
 }

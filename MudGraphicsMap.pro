@@ -1,4 +1,4 @@
-QT       += location-private positioning-private core gui network concurrent
+QT       += core gui
 
 greaterThan(QT_MAJOR_VERSION, 4): QT += widgets
 

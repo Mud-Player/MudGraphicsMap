@@ -3,46 +3,67 @@
 
 #include <QWidget>
 #include <QGraphicsView>
-#include <QtLocation/private/qgeoprojection_p.h>
 #include <QWheelEvent>
 
-class GraphicsView : public QGraphicsView
+/*!
+ * \brief 基于Graphics View的地图
+ * \details 其仅用于显示瓦片地图
+ */
+class MudMap : public QGraphicsView
 {
     Q_OBJECT
+
 public:
     struct TileSpec {
         int zoom;
         int x;
         int y;
-        bool operator <(const TileSpec &rhs) const;
+        bool operator< (const TileSpec &rhs) const;
+        bool operator== (const TileSpec &rhs) const;
     };
-    GraphicsView(QGraphicsScene *scene);
 
-    QGraphicsPixmapItem* addTile(const TileSpec &tile);
+    MudMap(QGraphicsScene *scene);
+
+signals:
+    void tileRequested(const MudMap::TileSpec &topLeft, const MudMap::TileSpec &bottomRight);
 
 protected:
     void wheelEvent(QWheelEvent *e) override;
+
 private:
     void fitTile();
-private:
-    QMap<TileSpec, QGraphicsPixmapItem*> m_tiles;
 };
+
+inline uint qHash(const MudMap::TileSpec &key, uint seed)
+{
+    return qHash(key.zoom, seed) + qHash(key.x, seed) + qHash(key.y, seed);
+}
+
 /*!
- * \brief 基于Graphics View的地图
- * \details 其仅用于显示瓦片地图
+ * \brief 瓦片地图管理线程
+ * \details 负责加载瓦片、卸载瓦片
  */
-class MudMap : public QWidget
+class MudMapThread : public QObject
 {
     Q_OBJECT
-
 public:
-    MudMap(QWidget *parent = nullptr);
-    ~MudMap();
-
-protected:
+    MudMapThread();
+    void requestTile(const MudMap::TileSpec &topLeft, const MudMap::TileSpec &bottomRight);
+    ~MudMapThread();
 
 private:
-    QGraphicsView  *m_view;
-    QGraphicsScene *m_scene;
+    QGraphicsPixmapItem* loadTile(const MudMap::TileSpec &tile);
+
+signals:
+    void tileToAdd(QGraphicsItem *tile);
+    void tileToRemove(QGraphicsItem *tile);
+
+private:
+    QMap<MudMap::TileSpec, QGraphicsItem*> m_tiles;  ///<已加载瓦片图元
+    QSet<MudMap::TileSpec>    m_tileSpecSet;         ///<已加载瓦片编号集合
+    //
+    MudMap::TileSpec m_preTopLeft;
+    MudMap::TileSpec m_preBottomRight;
 };
+
 #endif // MUDMAP_H
