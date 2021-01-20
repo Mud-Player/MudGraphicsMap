@@ -49,10 +49,10 @@ void MudMap::fitTile()
     int tileLen = qPow(2, intZoom);
     auto topLeftPos = mapToScene(viewport()->geometry().topLeft());
     auto bottomRightPos = mapToScene(viewport()->geometry().bottomRight());
-    int xBegin = topLeftPos.x() / 256 * tileLen;
-    int xEnd = bottomRightPos.x() / 256 * tileLen;
-    int yBegin = topLeftPos.y() / 256 * tileLen;
-    int yEnd = bottomRightPos.y() / 256 * tileLen;
+    int xBegin = topLeftPos.x() / 256 * tileLen - 1;
+    int xEnd = bottomRightPos.x() / 256 * tileLen + 1;
+    int yBegin = topLeftPos.y() / 256 * tileLen - 1;
+    int yEnd = bottomRightPos.y() / 256 * tileLen + 1;
     emit tileRequested({intZoom, xBegin, yBegin}, {intZoom, xEnd, yEnd});
 
 }
@@ -78,8 +78,8 @@ void MudMapThread::requestTile(const MudMap::TileSpec &topLeft, const MudMap::Ti
     int yBegin = topLeft.y;
     int yEnd = bottomRight.y;
     QSet<MudMap::TileSpec> visibleTilesSet;
-    for(int x = xBegin; x < xEnd; ++x) {
-        for(int y = yBegin; y < yEnd; ++y) {
+    for(int x = xBegin; x <= xEnd; ++x) {
+        for(int y = yBegin; y <= yEnd; ++y) {
             visibleTilesSet.insert({zoom, x, y});
         }
     }
