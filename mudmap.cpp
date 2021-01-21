@@ -9,7 +9,9 @@
 
 bool MudMap::TileSpec::operator <(const MudMap::TileSpec &rhs) const
 {
-    return ((this->zoom<<24) + (this->x << 8) + this->y) < ((rhs.zoom<<24) + (rhs.x << 8) + rhs.y);
+    qlonglong lhsVal = (qlonglong(this->zoom)<<48) + (qlonglong(this->x)<< 24) + this->y;
+    qlonglong rhsVal = (qlonglong(rhs.zoom)<<48) + (qlonglong(rhs.x)<< 24) + rhs.y;
+    return  lhsVal < rhsVal;
 }
 
 bool MudMap::TileSpec::operator==(const MudMap::TileSpec &rhs) const
@@ -20,16 +22,20 @@ bool MudMap::TileSpec::operator==(const MudMap::TileSpec &rhs) const
 MudMap::MudMap(QGraphicsScene *scene) : QGraphicsView(scene)
 {
     qRegisterMetaType<MudMap::TileSpec>("MudMap::TileSpec");
-    MudMapThread *mapThread = new MudMapThread;
-    connect(this, &QObject::destroyed, mapThread, &MudMapThread::deleteLater);
-    connect(this, &MudMap::tileRequested, mapThread, &MudMapThread::requestTile, Qt::QueuedConnection);
-    connect(mapThread, &MudMapThread::tileToAdd, this->scene(), &QGraphicsScene::addItem, Qt::QueuedConnection);
-    connect(mapThread, &MudMapThread::tileToRemove, this->scene(), &QGraphicsScene::removeItem, Qt::QueuedConnection);
+    m_mapThread = new MudMapThread;
+    connect(this, &MudMap::tileRequested, m_mapThread, &MudMapThread::requestTile, Qt::QueuedConnection);
+    connect(m_mapThread, &MudMapThread::tileToAdd, this->scene(), &QGraphicsScene::addItem, Qt::QueuedConnection);
+    connect(m_mapThread, &MudMapThread::tileToRemove, this->scene(), &QGraphicsScene::removeItem, Qt::QueuedConnection);
     QString fileName = QString("E:/arcgis/%1/%2/%3.jpg")
             .arg(0)
             .arg(0)
             .arg(0);
     this->scene()->addPixmap(fileName);
+}
+
+MudMap::~MudMap()
+{
+    delete m_mapThread;
 }
 
 void MudMap::wheelEvent(QWheelEvent *e)
@@ -60,6 +66,7 @@ void MudMap::fitTile()
 MudMapThread::MudMapThread()
 {
     QThread *thread = new QThread;
+    thread->setObjectName("MapThread");
     this->moveToThread(thread);
     thread->start();
 }
@@ -91,8 +98,8 @@ void MudMapThread::requestTile(const MudMap::TileSpec &topLeft, const MudMap::Ti
         while (i.hasNext()) {
             auto tileSpec = i.next();
             auto tileItem = loadTile(tileSpec);
-            m_tileSpecSet.insert(tileSpec);
-            m_tiles.insert(tileSpec, tileItem);
+            m_tileSpecSet.insert(tileSpec); // add 1
+            m_tiles.insert(tileSpec, tileItem); // add 2
             emit tileToAdd(tileItem);
         }
     }
@@ -103,7 +110,7 @@ void MudMapThread::requestTile(const MudMap::TileSpec &topLeft, const MudMap::Ti
         QSetIterator<MudMap::TileSpec> i(invisibleTiles);
         while (i.hasNext()) {
             auto tileSpec = i.next();
-            m_tileSpecSet.remove(tileSpec);     // remove1
+            m_tileSpecSet.remove(tileSpec);     // remove 1
             auto tileItem = m_tiles.take(tileSpec); // remove 2
             emit tileToRemove(tileItem);
         }

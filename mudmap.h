@@ -5,9 +5,11 @@
 #include <QGraphicsView>
 #include <QWheelEvent>
 
+class MudMapThread;
 /*!
  * \brief 基于Graphics View的地图
  * \details 其仅用于显示瓦片地图
+ * \bug item没有释放
  */
 class MudMap : public QGraphicsView
 {
@@ -23,6 +25,7 @@ public:
     };
 
     MudMap(QGraphicsScene *scene);
+    ~MudMap();
 
 signals:
     void tileRequested(const MudMap::TileSpec &topLeft, const MudMap::TileSpec &bottomRight);
@@ -32,11 +35,14 @@ protected:
 
 private:
     void fitTile();
+private:
+    MudMapThread *m_mapThread;
 };
 
 inline uint qHash(const MudMap::TileSpec &key, uint seed)
 {
-    return qHash(key.zoom, seed) + qHash(key.x, seed) + qHash(key.y, seed);
+    qlonglong keyVal = (qlonglong(key.zoom)<<48) + (qlonglong(key.x)<< 24) + key.y;
+    return qHash(keyVal, seed);
 }
 
 /*!
