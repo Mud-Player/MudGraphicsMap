@@ -4,6 +4,7 @@
 #include <QWidget>
 #include <QGraphicsView>
 #include <QWheelEvent>
+#include <QCache>
 
 class MudMapThread;
 /*!
@@ -20,6 +21,7 @@ public:
         int zoom;
         int x;
         int y;
+        TileSpec rise() const;
         bool operator< (const TileSpec &rhs) const;
         bool operator== (const TileSpec &rhs) const;
     };
@@ -54,30 +56,39 @@ class MudMapThread : public QObject
     Q_OBJECT
     /// 瓦片缓存节点，配合QCache实现缓存机制
     struct TileCacheNode {
-        friend MudMapThread;
-        //
-        MudMapThread *mapThread;
-        QGraphicsItem *value;       ///< 如果没有则为空，并且依赖其父节点提供图片
-        TileCacheNode *parent;      ///< 如果当前瓦片没有文件，则依赖上一层级的瓦片，依次递归
-        QList<QGraphicsItem*> children; ///< 依赖该瓦片的所有孩子节点(这些孩子节点没有瓦片文件)
+        MudMap::TileSpec tileSpec;
+        QGraphicsItem *value = nullptr;    ///< 如果没有则为空，并且依赖其父节点提供图片
+        TileCacheNode *parent = nullptr;   ///< 如果当前瓦片没有文件，则依赖上一层级的瓦片，依次递归
+        int refCount = 0;            ///< 引用计数(该瓦片要显示、子节点引用该节点都要+1)
         ~TileCacheNode();
     };
 
 public:
     MudMapThread();
-    void requestTile(const MudMap::TileSpec &topLeft, const MudMap::TileSpec &bottomRight);
     ~MudMapThread();
-
-private:
-    QGraphicsPixmapItem* loadTile(const MudMap::TileSpec &tile);
+public slots:
+    void requestTile(const MudMap::TileSpec &topLeft, const MudMap::TileSpec &bottomRight);
 
 signals:
     void tileToAdd(QGraphicsItem *tile);
     void tileToRemove(QGraphicsItem *tile);
 
 private:
-    QMap<MudMap::TileSpec, QGraphicsItem*> m_tiles;  ///<已加载瓦片图元
-    QSet<MudMap::TileSpec>    m_tileSpecSet;         ///<已加载瓦片编号集合
+    void updateRequestedTile(const MudMap::TileSpec &tile);   ///< 可能存在递归
+    void updateElapsedTile(const MudMap::TileSpec &tileSpec);
+    /// 从磁盘加载瓦片文件
+    QGraphicsPixmapItem* loadTile(const MudMap::TileSpec &tile);
+    /// 递归卸载该瓦片节点及其依赖
+    void unloadTile(MudMapThread::TileCacheNode *node);
+    /// 递归创建瓦片依赖数,其引用计数已经更新
+    TileCacheNode *createTileCacheRecursively(TileCacheNode *child);
+    /// 创建一个瓦片
+    TileCacheNode *createTileCache(const MudMap::TileSpec &tileSpec);
+
+
+private:
+    QCache<MudMap::TileSpec, TileCacheNode> m_tileCache; ///<已加载瓦片图元
+    QSet<MudMap::TileSpec>    m_tileRequestedSet;             ///<请求加载瓦片编号集合(不包括依赖父节点)
     //
     MudMap::TileSpec m_preTopLeft;
     MudMap::TileSpec m_preBottomRight;

@@ -6,6 +6,12 @@
 #include <QGraphicsLineItem>
 #include <QtMath>
 #include <QThread>
+#include <QFileInfo>
+
+MudMap::TileSpec MudMap::TileSpec::rise() const
+{
+    return MudMap::TileSpec({this->zoom-1, this->x/2, this->y/2});
+}
 
 bool MudMap::TileSpec::operator <(const MudMap::TileSpec &rhs) const
 {
@@ -56,20 +62,42 @@ void MudMap::fitTile()
     auto topLeftPos = mapToScene(viewport()->geometry().topLeft());
     auto bottomRightPos = mapToScene(viewport()->geometry().bottomRight());
     int xBegin = topLeftPos.x() / 256 * tileLen - 1;
-    int xEnd = bottomRightPos.x() / 256 * tileLen + 1;
     int yBegin = topLeftPos.y() / 256 * tileLen - 1;
+    int xEnd = bottomRightPos.x() / 256 * tileLen + 1;
     int yEnd = bottomRightPos.y() / 256 * tileLen + 1;
+    if(xBegin < 0) xBegin = 0;
+    if(yBegin < 0) yBegin = 0;
+    if(xEnd >= tileLen) xEnd = tileLen - 1;
+    if(yEnd >= tileLen) yEnd = tileLen - 1;
     emit tileRequested({intZoom, xBegin, yBegin}, {intZoom, xEnd, yEnd});
 
 }
 
+MudMapThread::TileCacheNode::~TileCacheNode()
+{
+    qDebug()<<"Destroy"<<this->tileSpec.zoom << this->tileSpec.x << this->tileSpec.y;
+    if(parent)
+        parent->refCount -= 1;
+    delete value;
+}
+
 MudMapThread::MudMapThread()
 {
+    m_tileCache.setMaxCost(1000);
+    //
     QThread *thread = new QThread;
     thread->setObjectName("MapThread");
     this->moveToThread(thread);
     thread->start();
 }
+
+MudMapThread::~MudMapThread()
+{
+    this->thread()->quit();
+    this->thread()->wait();
+    delete this->thread();
+}
+
 
 void MudMapThread::requestTile(const MudMap::TileSpec &topLeft, const MudMap::TileSpec &bottomRight)
 {
@@ -93,35 +121,66 @@ void MudMapThread::requestTile(const MudMap::TileSpec &topLeft, const MudMap::Ti
 
     // need to load new tile to scene
     {
-        auto newTiles = visibleTilesSet - m_tileSpecSet;
+        auto newTiles = visibleTilesSet - m_tileRequestedSet;
         QSetIterator<MudMap::TileSpec> i(newTiles);
         while (i.hasNext()) {
             auto tileSpec = i.next();
-            auto tileItem = loadTile(tileSpec);
-            m_tileSpecSet.insert(tileSpec); // add 1
-            m_tiles.insert(tileSpec, tileItem); // add 2
-            emit tileToAdd(tileItem);
+            updateRequestedTile(tileSpec);
         }
     }
 
     // need to remove from scene
     {
-        auto invisibleTiles = m_tileSpecSet - visibleTilesSet;
+        auto invisibleTiles = m_tileRequestedSet - visibleTilesSet;
         QSetIterator<MudMap::TileSpec> i(invisibleTiles);
         while (i.hasNext()) {
             auto tileSpec = i.next();
-            m_tileSpecSet.remove(tileSpec);     // remove 1
-            auto tileItem = m_tiles.take(tileSpec); // remove 2
-            emit tileToRemove(tileItem);
+            updateElapsedTile(tileSpec);
         }
     }
 }
 
-MudMapThread::~MudMapThread()
+void MudMapThread::updateRequestedTile(const MudMap::TileSpec &tileSpec)
 {
-    this->thread()->quit();
-    this->thread()->wait();
-    delete this->thread();
+    m_tileRequestedSet.insert(tileSpec);
+    //
+    auto tileCacheItem = m_tileCache.object(tileSpec);
+    // if contains
+    if(tileCacheItem) {
+        auto tileItem = createTileCacheRecursively(tileCacheItem);
+        if(tileItem->refCount == 1) { // if equals 1, means it was just created
+            emit tileToAdd(tileItem->value);
+            qDebug()<<"BBB" << tileSpec.zoom << tileSpec.x << tileSpec.y
+                   << "||" << tileItem->tileSpec.zoom << tileItem->tileSpec.x << tileItem->tileSpec.y;
+        }
+    }
+    // if not contains
+    else {
+        auto tileItem = createTileCache(tileSpec);
+        tileItem = createTileCacheRecursively(tileItem);
+        if(tileItem->refCount == 0) {   // a node without parent
+            tileItem->refCount += 1;
+            emit tileToAdd(tileItem->value);
+            qDebug()<<"CCC" << tileSpec.zoom << tileSpec.x << tileSpec.y
+                   << "||" << tileItem->tileSpec.zoom << tileItem->tileSpec.x << tileItem->tileSpec.y;
+        }
+        else if(tileItem->refCount == 1){   // top parent
+            emit tileToAdd(tileItem->value);
+            qDebug()<<"DDD" << tileSpec.zoom << tileSpec.x << tileSpec.y
+                   << "||" << tileItem->tileSpec.zoom << tileItem->tileSpec.x << tileItem->tileSpec.y;
+        }
+    }
+}
+
+void MudMapThread::updateElapsedTile(const MudMap::TileSpec &tileSpec)
+{
+    m_tileRequestedSet.remove(tileSpec);
+
+    auto tileCacheItem = m_tileCache.object(tileSpec);
+    if(!tileCacheItem)
+        return;
+    //
+    unloadTile(tileCacheItem);
 }
 
 QGraphicsPixmapItem *MudMapThread::loadTile(const MudMap::TileSpec &tile)
@@ -133,8 +192,12 @@ QGraphicsPixmapItem *MudMapThread::loadTile(const MudMap::TileSpec &tile)
             .arg(tile.zoom)
             .arg(tile.x)
             .arg(tileLen - tile.y -1);
+    if(!QFileInfo::exists(fileName))
+        return nullptr;
+
     auto tileItem = new QGraphicsPixmapItem(fileName);
     tileItem->setZValue(tile.zoom);
+
     //
     double xOff = tileOff * tile.x;
     double yOff = tileOff * tile.y;
@@ -146,6 +209,73 @@ QGraphicsPixmapItem *MudMapThread::loadTile(const MudMap::TileSpec &tile)
     return tileItem;
 }
 
-MudMapThread::TileCacheNode::~TileCacheNode()
+void MudMapThread::unloadTile(MudMapThread::TileCacheNode *node)
 {
+    auto parent = node->parent;
+    node->refCount -= 1;
+    // tells scene to remove the tile as nobody need it
+    if(!parent && node->refCount == 0) { //ref change from 1 to 0, means it's shown now
+        emit tileToRemove(node->value);
+        qDebug()<<"RRRR" << node->tileSpec.zoom << node->tileSpec.x << node->tileSpec.y;
+    }
+
+    //  tell parent that such node don't need it anymore
+    if(parent) {
+        // if nodody need parent, remove the parent too
+        unloadTile(node->parent);
+    }
 }
+
+MudMapThread::TileCacheNode *MudMapThread::createTileCacheRecursively(MudMapThread::TileCacheNode *child)
+{
+    if(!child) {
+        qWarning() << __FUNCTION__ <<"@Child has be a vaild pointer";
+        return nullptr;
+    }
+
+    if(child->value)
+        return child;
+
+    //
+    auto tileSpec = child->tileSpec.rise();
+
+    MudMapThread::TileCacheNode *parent = nullptr;
+    if(m_tileCache.contains(tileSpec)) {
+        parent = m_tileCache.object(tileSpec);
+        parent->refCount += 1;
+    }
+    else {
+        parent = new MudMapThread::TileCacheNode;
+        parent->tileSpec = tileSpec;
+        parent->refCount = 1;
+        parent->value = loadTile(tileSpec);
+        m_tileCache.insert(tileSpec, parent);
+    }
+
+    child->parent = parent;
+
+    //
+    if(!parent->value) {
+        if(tileSpec.zoom == 0) {
+            return nullptr;
+        }
+        else {
+            return createTileCacheRecursively(parent);
+        }
+    }
+
+    //
+    return parent;
+}
+
+MudMapThread::TileCacheNode *MudMapThread::createTileCache(const MudMap::TileSpec &tileSpec)
+{
+    MudMapThread::TileCacheNode *tile = new MudMapThread::TileCacheNode;
+    tile->value = loadTile(tileSpec);
+    tile->parent = nullptr;
+    tile->refCount = 0;
+    tile->tileSpec = tileSpec;
+    m_tileCache.insert(tileSpec, tile);
+    return tile;
+}
+
