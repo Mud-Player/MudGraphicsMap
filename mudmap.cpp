@@ -145,3 +145,7 @@ QGraphicsPixmapItem *MudMapThread::loadTile(const MudMap::TileSpec &tile)
     tileItem->setTransform(transform);
     return tileItem;
 }
+
+MudMapThread::TileCacheNode::~TileCacheNode()
+{
+}

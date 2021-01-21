@@ -52,6 +52,17 @@ inline uint qHash(const MudMap::TileSpec &key, uint seed)
 class MudMapThread : public QObject
 {
     Q_OBJECT
+    /// 瓦片缓存节点，配合QCache实现缓存机制
+    struct TileCacheNode {
+        friend MudMapThread;
+        //
+        MudMapThread *mapThread;
+        QGraphicsItem *value;       ///< 如果没有则为空，并且依赖其父节点提供图片
+        TileCacheNode *parent;      ///< 如果当前瓦片没有文件，则依赖上一层级的瓦片，依次递归
+        QList<QGraphicsItem*> children; ///< 依赖该瓦片的所有孩子节点(这些孩子节点没有瓦片文件)
+        ~TileCacheNode();
+    };
+
 public:
     MudMapThread();
     void requestTile(const MudMap::TileSpec &topLeft, const MudMap::TileSpec &bottomRight);
