@@ -50,10 +50,10 @@ void MudMap::wheelEvent(QWheelEvent *e)
         scale(10.0/9, 10.0/9);
     else
         scale(9.0/10, 9.0/10);
-    fitTile();
+    updateTile();
 }
 
-void MudMap::fitTile()
+void MudMap::updateTile()
 {
     qreal curZoom = qLn(transform().m11()) / qLn(2);
     int intZoom = qCeil(curZoom);
@@ -61,10 +61,10 @@ void MudMap::fitTile()
     int tileLen = qPow(2, intZoom);
     auto topLeftPos = mapToScene(viewport()->geometry().topLeft());
     auto bottomRightPos = mapToScene(viewport()->geometry().bottomRight());
-    int xBegin = topLeftPos.x() / 256 * tileLen - 1;
-    int yBegin = topLeftPos.y() / 256 * tileLen - 1;
-    int xEnd = bottomRightPos.x() / 256 * tileLen + 1;
-    int yEnd = bottomRightPos.y() / 256 * tileLen + 1;
+    int xBegin = topLeftPos.x() / 256 * tileLen;
+    int yBegin = topLeftPos.y() / 256 * tileLen;
+    int xEnd = bottomRightPos.x() / 256 * tileLen;
+    int yEnd = bottomRightPos.y() / 256 * tileLen;
     if(xBegin < 0) xBegin = 0;
     if(yBegin < 0) yBegin = 0;
     if(xEnd >= tileLen) xEnd = tileLen - 1;
@@ -78,6 +78,8 @@ MudMapThread::TileCacheNode::~TileCacheNode()
     qDebug()<<"Destroy"<<this->tileSpec.zoom << this->tileSpec.x << this->tileSpec.y;
     if(parent)
         parent->refCount -= 1;
+    if(refCount >= 1)
+        qDebug()<<"refCount :" <<refCount;
     delete value;
 }
 
@@ -112,17 +114,18 @@ void MudMapThread::requestTile(const MudMap::TileSpec &topLeft, const MudMap::Ti
     int xEnd = bottomRight.x;
     int yBegin = topLeft.y;
     int yEnd = bottomRight.y;
-    QSet<MudMap::TileSpec> visibleTilesSet;
+    QSet<MudMap::TileSpec> insideTilesSet;
     for(int x = xBegin; x <= xEnd; ++x) {
         for(int y = yBegin; y <= yEnd; ++y) {
-            visibleTilesSet.insert({zoom, x, y});
+            insideTilesSet.insert({zoom, x, y});
         }
     }
 
     // need to load new tile to scene
     {
-        auto newTiles = visibleTilesSet - m_tileRequestedSet;
+        auto newTiles = insideTilesSet - m_tileRequestedSet;
         QSetIterator<MudMap::TileSpec> i(newTiles);
+        qDebug()<<"NewTiles Count: +" << +newTiles.count();
         while (i.hasNext()) {
             auto tileSpec = i.next();
             updateRequestedTile(tileSpec);
@@ -131,55 +134,50 @@ void MudMapThread::requestTile(const MudMap::TileSpec &topLeft, const MudMap::Ti
 
     // need to remove from scene
     {
-        auto invisibleTiles = m_tileRequestedSet - visibleTilesSet;
-        QSetIterator<MudMap::TileSpec> i(invisibleTiles);
+        auto outsideTiles = m_tileRequestedSet - insideTilesSet;
+        QSetIterator<MudMap::TileSpec> i(outsideTiles);
+        qDebug()<<"OldTiles Count: -" << outsideTiles.count();
         while (i.hasNext()) {
             auto tileSpec = i.next();
             updateElapsedTile(tileSpec);
         }
     }
+
+    //
+    m_tileRequestedSet = insideTilesSet;
 }
 
 void MudMapThread::updateRequestedTile(const MudMap::TileSpec &tileSpec)
 {
-    m_tileRequestedSet.insert(tileSpec);
     //
     auto tileCacheItem = m_tileCache.object(tileSpec);
-    // if contains
+    MudMapThread::TileCacheNode* tileItem = nullptr;
+
+    //
     if(tileCacheItem) {
-        auto tileItem = createTileCacheRecursively(tileCacheItem);
-        if(tileItem->refCount == 1) { // if equals 1, means it was just created
-            emit tileToAdd(tileItem->value);
-            qDebug()<<"BBB" << tileSpec.zoom << tileSpec.x << tileSpec.y
-                   << "||" << tileItem->tileSpec.zoom << tileItem->tileSpec.x << tileItem->tileSpec.y;
-        }
+        tileItem = createTileCacheRecursively(tileCacheItem);
     }
-    // if not contains
     else {
-        auto tileItem = createTileCache(tileSpec);
+        tileItem = createTileCache(tileSpec);
         tileItem = createTileCacheRecursively(tileItem);
-        if(tileItem->refCount == 0) {   // a node without parent
-            tileItem->refCount += 1;
-            emit tileToAdd(tileItem->value);
-            qDebug()<<"CCC" << tileSpec.zoom << tileSpec.x << tileSpec.y
-                   << "||" << tileItem->tileSpec.zoom << tileItem->tileSpec.x << tileItem->tileSpec.y;
-        }
-        else if(tileItem->refCount == 1){   // top parent
-            emit tileToAdd(tileItem->value);
-            qDebug()<<"DDD" << tileSpec.zoom << tileSpec.x << tileSpec.y
-                   << "||" << tileItem->tileSpec.zoom << tileItem->tileSpec.x << tileItem->tileSpec.y;
-        }
+    }
+
+    //
+    if(!tileItem->show) {
+        tileItem->show = true;
+        emit tileToAdd(tileItem->value);
+        qDebug()<<"CCC" << tileSpec.zoom << tileSpec.x << tileSpec.y
+               << "||" << tileItem->tileSpec.zoom << tileItem->tileSpec.x << tileItem->tileSpec.y;
     }
 }
 
 void MudMapThread::updateElapsedTile(const MudMap::TileSpec &tileSpec)
 {
-    m_tileRequestedSet.remove(tileSpec);
-
     auto tileCacheItem = m_tileCache.object(tileSpec);
     if(!tileCacheItem)
         return;
     //
+    qDebug()<<"Unload: " << tileSpec.zoom << tileSpec.x << tileSpec.y;
     unloadTile(tileCacheItem);
 }
 
@@ -212,15 +210,17 @@ QGraphicsPixmapItem *MudMapThread::loadTile(const MudMap::TileSpec &tile)
 void MudMapThread::unloadTile(MudMapThread::TileCacheNode *node)
 {
     auto parent = node->parent;
-    node->refCount -= 1;
+
     // tells scene to remove the tile as nobody need it
-    if(!parent && node->refCount == 0) { //ref change from 1 to 0, means it's shown now
+    if(node->show) { //ref change from 1 to 0, means it's shown now
+        node->show = false;
         emit tileToRemove(node->value);
         qDebug()<<"RRRR" << node->tileSpec.zoom << node->tileSpec.x << node->tileSpec.y;
     }
 
     //  tell parent that such node don't need it anymore
     if(parent) {
+        parent->refCount -= 1;
         // if nodody need parent, remove the parent too
         unloadTile(node->parent);
     }

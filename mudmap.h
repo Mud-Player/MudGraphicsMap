@@ -36,7 +36,7 @@ protected:
     void wheelEvent(QWheelEvent *e) override;
 
 private:
-    void fitTile();
+    void updateTile();
 private:
     MudMapThread *m_mapThread;
 };
@@ -59,7 +59,8 @@ class MudMapThread : public QObject
         MudMap::TileSpec tileSpec;
         QGraphicsItem *value = nullptr;    ///< 如果没有则为空，并且依赖其父节点提供图片
         TileCacheNode *parent = nullptr;   ///< 如果当前瓦片没有文件，则依赖上一层级的瓦片，依次递归
-        int refCount = 0;            ///< 引用计数(该瓦片要显示、子节点引用该节点都要+1)
+        int refCount = 0;   ///< 子节点引用计数
+        bool show = false;          ///< 是否显示
         ~TileCacheNode();
     };
 
