@@ -55,11 +55,12 @@ class MudMapThread : public QObject
 {
     Q_OBJECT
     /// 瓦片缓存节点，配合QCache实现缓存机制
+public:
     struct TileCacheNode {
         MudMap::TileSpec tileSpec;
         QGraphicsItem *value = nullptr;    ///< 如果没有则为空，并且依赖其父节点提供图片
         TileCacheNode *parent = nullptr;   ///< 如果当前瓦片没有文件，则依赖上一层级的瓦片，依次递归
-        int refCount = 0;   ///< 子节点引用计数
+        int refCount = 0;   ///< 子节点引用计数(本节点要显示、本节点要引用其他节点、子节点引用该节点 >> 都要+1, 反之-1)
         bool show = false;          ///< 是否显示
         ~TileCacheNode();
     };
