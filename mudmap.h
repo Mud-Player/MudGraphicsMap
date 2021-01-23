@@ -35,6 +35,7 @@ signals:
 protected:
     virtual void wheelEvent(QWheelEvent *e) override;
     virtual void mouseMoveEvent(QMouseEvent *event) override;
+    virtual void mousePressEvent(QMouseEvent *event) override;
 
 private:
     void updateTile();

@@ -35,12 +35,12 @@ MudMap::MudMap(QGraphicsScene *scene) : QGraphicsView(scene)
     connect(m_mapThread, &MudMapThread::tileToRemove, this->scene(), &QGraphicsScene::removeItem, Qt::QueuedConnection);
     connect(m_mapThread, &MudMapThread::tileToAdd, this, [&](QGraphicsItem* item){ m_tiles.insert(item); }, Qt::QueuedConnection);
     connect(m_mapThread, &MudMapThread::tileToRemove, this, [&](QGraphicsItem* item){ m_tiles.remove(item); }, Qt::QueuedConnection);
-
     QString fileName = QString("E:/arcgis/%1/%2/%3.jpg")
             .arg(0)
             .arg(0)
             .arg(0);
     this->scene()->addPixmap(fileName);
+    scale(2, 2);
 }
 
 MudMap::~MudMap()
@@ -54,8 +54,14 @@ MudMap::~MudMap()
 
 void MudMap::wheelEvent(QWheelEvent *e)
 {
+    qreal curZoom = qLn(transform().m11()) / qLn(2);
+    //
     qreal scaleFac = e->delta() * 0.01;
     qreal scaleXY = 1 + scaleFac;
+    qreal newZoom = curZoom * scaleXY;
+    if(newZoom <= 1 || newZoom >= 20)
+        return;
+
     this->scale(scaleXY, scaleXY);
     updateTile();
 }
@@ -64,6 +70,19 @@ void MudMap::mouseMoveEvent(QMouseEvent *event)
 {
     QGraphicsView::mouseMoveEvent(event);
     updateTile();
+}
+
+void MudMap::mousePressEvent(QMouseEvent *event)
+{
+    QGraphicsView::mousePressEvent(event);
+    //
+    auto pos = mapToScene(event->pos());
+    qreal curZoom = qLn(transform().m11()) / qLn(2);
+    int intZoom = qCeil(curZoom);
+    int tileLen = qPow(2, intZoom);
+    int x = pos.x() / 256 * tileLen;
+    int y = pos.y() / 256 * tileLen;
+    qDebug() << pos <<intZoom << x << tileLen - y - 1;
 }
 
 void MudMap::updateTile()
@@ -181,10 +200,6 @@ void MudMapThread::requestTile(const MudMap::TileSpec &topLeft, const MudMap::Ti
             hideItem(tileSpec);
         }
     }
-    qDebug()<< "+++Show: " << m_tileShowedSet.count();
-    qDebug()<< "+++Hide: " << realToHideTileSet.count();
-    qDebug()<< "===Cache: " << m_tileCache.totalCost();
-    qDebug()<< "***Zoom:  " << topLeft.zoom;
 }
 
 void MudMapThread::showItem(const MudMap::TileSpec &tileSpec)
