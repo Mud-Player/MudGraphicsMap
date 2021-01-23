@@ -10,7 +10,6 @@ class MudMapThread;
 /*!
  * \brief 基于Graphics View的地图
  * \details 其仅用于显示瓦片地图
- * \bug item没有释放
  */
 class MudMap : public QGraphicsView
 {
@@ -35,13 +34,16 @@ signals:
 protected:
     virtual void wheelEvent(QWheelEvent *e) override;
     virtual void mouseMoveEvent(QMouseEvent *event) override;
-    virtual void mousePressEvent(QMouseEvent *event) override;
 
 private:
     void updateTile();
+
 private:
     MudMapThread        *m_mapThread;
     QSet<QGraphicsItem*> m_tiles;
+    //
+    bool m_isloading;
+    bool m_hasPendingLoad;
 };
 
 inline uint qHash(const MudMap::TileSpec &key, uint seed)
@@ -73,6 +75,7 @@ public slots:
 signals:
     void tileToAdd(QGraphicsItem *tile);
     void tileToRemove(QGraphicsItem *tile);
+    void requestFinished();
 
 private:
     void showItem(const MudMap::TileSpec &tileSpec);

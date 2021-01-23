@@ -25,7 +25,9 @@ bool MudMap::TileSpec::operator==(const MudMap::TileSpec &rhs) const
     return (this->zoom == rhs.zoom) && (this->x == rhs.x) && (this->y == rhs.y);
 }
 
-MudMap::MudMap(QGraphicsScene *scene) : QGraphicsView(scene)
+MudMap::MudMap(QGraphicsScene *scene) : QGraphicsView(scene),
+    m_isloading(false),
+    m_hasPendingLoad(false)
 {
     qRegisterMetaType<MudMap::TileSpec>("MudMap::TileSpec");
     m_mapThread = new MudMapThread;
@@ -35,6 +37,13 @@ MudMap::MudMap(QGraphicsScene *scene) : QGraphicsView(scene)
     connect(m_mapThread, &MudMapThread::tileToRemove, this->scene(), &QGraphicsScene::removeItem, Qt::QueuedConnection);
     connect(m_mapThread, &MudMapThread::tileToAdd, this, [&](QGraphicsItem* item){ m_tiles.insert(item); }, Qt::QueuedConnection);
     connect(m_mapThread, &MudMapThread::tileToRemove, this, [&](QGraphicsItem* item){ m_tiles.remove(item); }, Qt::QueuedConnection);
+    connect(m_mapThread, &MudMapThread::requestFinished, this, [&](){
+        m_isloading = false;
+        if(m_hasPendingLoad) {
+            updateTile();
+            m_hasPendingLoad = false;
+        }
+    }, Qt::QueuedConnection);
     QString fileName = QString("E:/arcgis/%1/%2/%3.jpg")
             .arg(0)
             .arg(0)
@@ -63,26 +72,19 @@ void MudMap::wheelEvent(QWheelEvent *e)
         return;
 
     this->scale(scaleXY, scaleXY);
-    updateTile();
+    if(m_isloading)
+        m_hasPendingLoad = true;
+    else
+        updateTile();
 }
 
 void MudMap::mouseMoveEvent(QMouseEvent *event)
 {
     QGraphicsView::mouseMoveEvent(event);
-    updateTile();
-}
-
-void MudMap::mousePressEvent(QMouseEvent *event)
-{
-    QGraphicsView::mousePressEvent(event);
-    //
-    auto pos = mapToScene(event->pos());
-    qreal curZoom = qLn(transform().m11()) / qLn(2);
-    int intZoom = qCeil(curZoom);
-    int tileLen = qPow(2, intZoom);
-    int x = pos.x() / 256 * tileLen;
-    int y = pos.y() / 256 * tileLen;
-    qDebug() << pos <<intZoom << x << tileLen - y - 1;
+    if(m_isloading)
+        m_hasPendingLoad = true;
+    else
+        updateTile();
 }
 
 void MudMap::updateTile()
@@ -101,6 +103,7 @@ void MudMap::updateTile()
     if(yBegin < 0) yBegin = 0;
     if(xEnd >= tileLen) xEnd = tileLen - 1;
     if(yEnd >= tileLen) yEnd = tileLen - 1;
+    m_isloading = true;
     emit tileRequested({intZoom, xBegin, yBegin}, {intZoom, xEnd, yEnd});
 
 }
@@ -132,8 +135,10 @@ MudMapThread::~MudMapThread()
 
 void MudMapThread::requestTile(const MudMap::TileSpec &topLeft, const MudMap::TileSpec &bottomRight)
 {
-    if(m_preTopLeft == topLeft && m_preBottomRight == bottomRight)
+    if(m_preTopLeft == topLeft && m_preBottomRight == bottomRight) {
+        emit requestFinished();
         return;
+    }
 
     // y向下递增
     QSet<MudMap::TileSpec> curViewSet;
@@ -200,6 +205,8 @@ void MudMapThread::requestTile(const MudMap::TileSpec &topLeft, const MudMap::Ti
             hideItem(tileSpec);
         }
     }
+
+    emit requestFinished();
 }
 
 void MudMapThread::showItem(const MudMap::TileSpec &tileSpec)
