@@ -81,6 +81,10 @@ void MudMap::wheelEvent(QWheelEvent *e)
 void MudMap::mouseMoveEvent(QMouseEvent *event)
 {
     QGraphicsView::mouseMoveEvent(event);
+    // as for QGrahpicsView, the move event will be generated whether press event happens
+    if(!event->buttons())
+        return;
+
     if(m_isloading)
         m_hasPendingLoad = true;
     else
