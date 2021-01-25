@@ -44,12 +44,7 @@ MudMap::MudMap(QGraphicsScene *scene) : QGraphicsView(scene),
             m_hasPendingLoad = false;
         }
     }, Qt::QueuedConnection);
-    QString fileName = QString("E:/arcgis/%1/%2/%3.jpg")
-            .arg(0)
-            .arg(0)
-            .arg(0);
-    this->scene()->addPixmap(fileName);
-    scale(2, 2);
+    this->scene()->setSceneRect(0, 0, 256, 256);
 }
 
 MudMap::~MudMap()
@@ -101,7 +96,7 @@ void MudMap::mouseMoveEvent(QMouseEvent *event)
 void MudMap::updateTile()
 {
     qreal curZoom = qLn(transform().m11()) / qLn(2);
-    int intZoom = qCeil(curZoom);
+    int intZoom = qFloor(curZoom+0.5);
     //
     int tileLen = qPow(2, intZoom);
     auto topLeftPos = mapToScene(viewport()->geometry().topLeft());
@@ -258,7 +253,7 @@ QGraphicsPixmapItem *MudMapThread::loadTileItem(const MudMap::TileSpec &tileSpec
         return nullptr;
 
     auto tileItem = new QGraphicsPixmapItem(fileName);
-    tileItem->setZValue(tileSpec.zoom);
+    tileItem->setZValue(tileSpec.zoom - 20);
 
     //
     double xOff = tileOff * tileSpec.x;
