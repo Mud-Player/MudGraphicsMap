@@ -63,19 +63,26 @@ MudMap::~MudMap()
 
 void MudMap::wheelEvent(QWheelEvent *e)
 {
-    qreal curZoom = qLn(transform().m11()) / qLn(2);
+    const qreal scaleBase = 1.2f;
+    const qreal minScale = 1 << 0;   // zoom level 0
+    const qreal maxScale = 1 << 20;  // zoom level 20
+    qreal curScale = transform().m11();
     //
-    qreal scaleFac = e->delta() * 0.01;
-    qreal scaleXY = 1 + scaleFac;
-    qreal newZoom = curZoom * scaleXY;
-    if(newZoom <= 1 || newZoom >= 20)
-        return;
-
-    this->scale(scaleXY, scaleXY);
+    qreal sign = e->angleDelta().y() > 0 ? 1 : -1;
+    qreal scaleFac = (qAbs(e->angleDelta().y()) / 120.0) * (scaleBase - 1) + 1; // 0~120 tranlate to 1~base
+    if(sign > 0) { // zoom in
+        scaleFac = qMin(scaleFac, maxScale / curScale);
+    }
+    else { // zoom out
+        scaleFac = 1 / scaleFac;
+        scaleFac = qMax(scaleFac, minScale / curScale);
+    }
+    this->scale(scaleFac, scaleFac);
     if(m_isloading)
         m_hasPendingLoad = true;
     else
         updateTile();
+    e->accept();
 }
 
 void MudMap::mouseMoveEvent(QMouseEvent *event)
