@@ -27,6 +27,8 @@ public:
 
     MudMap(QGraphicsScene *scene);
     ~MudMap();
+    /// 设置瓦片路径
+    void setTilePath(const QString &path);
 
 signals:
     void tileRequested(const MudMap::TileSpec &topLeft, const MudMap::TileSpec &bottomRight);
@@ -71,6 +73,8 @@ public:
     ~MudMapThread();
 public slots:
     void requestTile(const MudMap::TileSpec &topLeft, const MudMap::TileSpec &bottomRight);
+    /// 设置瓦片路径
+    void setTilePath(const QString &path);
 
 signals:
     void tileToAdd(QGraphicsItem *tile);
@@ -90,6 +94,7 @@ private:
     //
     MudMap::TileSpec m_preTopLeft;
     MudMap::TileSpec m_preBottomRight;
+    QString          m_path;
 };
 
 #endif // MUDMAP_H

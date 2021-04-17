@@ -56,6 +56,11 @@ MudMap::~MudMap()
     delete m_mapThread;
 }
 
+void MudMap::setTilePath(const QString &path)
+{
+    m_mapThread->setTilePath(path);
+}
+
 void MudMap::wheelEvent(QWheelEvent *e)
 {
     const qreal scaleBase = 1.2f;
@@ -215,6 +220,11 @@ void MudMapThread::requestTile(const MudMap::TileSpec &topLeft, const MudMap::Ti
     emit requestFinished();
 }
 
+void MudMapThread::setTilePath(const QString &path)
+{
+    m_path = path;
+}
+
 void MudMapThread::showItem(const MudMap::TileSpec &tileSpec)
 {
     if(m_tileShowedSet.contains(tileSpec))
@@ -245,7 +255,8 @@ QGraphicsPixmapItem *MudMapThread::loadTileItem(const MudMap::TileSpec &tileSpec
     const int tileOff = 256;
     int tileLen = qPow(2, tileSpec.zoom);
     //
-    QString fileName = QString("E:/arcgis/%1/%2/%3.jpg")
+    QString fileName = QString("%1/%2/%3/%4.jpg")
+            .arg(m_path)
             .arg(tileSpec.zoom)
             .arg(tileSpec.x)
             .arg(tileLen - tileSpec.y -1);

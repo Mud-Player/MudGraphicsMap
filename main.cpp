@@ -6,6 +6,7 @@ int main(int argc, char *argv[])
 {
     QApplication a(argc, argv);
     MudMap map(new QGraphicsScene);
+    map.setTilePath("Y:/");
     map.setDragMode(QGraphicsView::ScrollHandDrag);
     map.setRenderHint(QPainter::Antialiasing, true);
     map.setOptimizationFlags(QGraphicsView::DontSavePainterState);
