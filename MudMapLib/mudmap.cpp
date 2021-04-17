@@ -38,10 +38,14 @@ MudMap::MudMap(QGraphicsScene *scene) : QGraphicsView(scene),
     //
     m_mapThread = new MudMapThread;
     connect(this, &MudMap::tileRequested, m_mapThread, &MudMapThread::requestTile, Qt::QueuedConnection);
-    connect(m_mapThread, &MudMapThread::tileToAdd, this->scene(), &QGraphicsScene::addItem, Qt::QueuedConnection);
-    connect(m_mapThread, &MudMapThread::tileToRemove, this->scene(), &QGraphicsScene::removeItem, Qt::QueuedConnection);
-    connect(m_mapThread, &MudMapThread::tileToAdd, this, [&](QGraphicsItem* item){ m_tiles.insert(item); }, Qt::QueuedConnection);
-    connect(m_mapThread, &MudMapThread::tileToRemove, this, [&](QGraphicsItem* item){ m_tiles.remove(item); }, Qt::QueuedConnection);
+    connect(m_mapThread, &MudMapThread::tileToAdd, this, [&](QGraphicsItem* item){
+        this->scene()->addItem(item);
+        m_tiles.insert(item);
+    }, Qt::QueuedConnection);
+    connect(m_mapThread, &MudMapThread::tileToRemove, this, [&](QGraphicsItem* item){
+        this->scene()->removeItem(item);
+        m_tiles.remove(item);
+    }, Qt::QueuedConnection);
     connect(m_mapThread, &MudMapThread::requestFinished, this, [&](){
         m_isloading = false;
         if(m_hasPendingLoad) {
@@ -79,6 +83,11 @@ void MudMap::setZoomLevel(const float &zoom)
         m_hasPendingLoad = true;
     else
         updateTile();
+}
+
+void MudMap::setTileCacheCount(const int &count)
+{
+    m_mapThread->setTileCacheCount(count);
 }
 
 void MudMap::wheelEvent(QWheelEvent *e)
@@ -228,6 +237,11 @@ void MudMapThread::requestTile(const MudMap::TileSpec &topLeft, const MudMap::Ti
 void MudMapThread::setTilePath(const QString &path)
 {
     m_path = path;
+}
+
+void MudMapThread::setTileCacheCount(const int &count)
+{
+    m_tileCache.setMaxCost(count);
 }
 
 void MudMapThread::showItem(const MudMap::TileSpec &tileSpec)

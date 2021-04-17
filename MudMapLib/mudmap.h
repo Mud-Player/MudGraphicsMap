@@ -32,6 +32,8 @@ public:
     void setTilePath(const QString &path);
     /// 设置缩放等级
     void setZoomLevel(const float &zoom);
+    /// 设置瓦片缓存数量
+    void setTileCacheCount(const int &count);
 
 signals:
     void tileRequested(const MudMap::TileSpec &topLeft, const MudMap::TileSpec &bottomRight);
@@ -79,6 +81,8 @@ public slots:
     void requestTile(const MudMap::TileSpec &topLeft, const MudMap::TileSpec &bottomRight);
     /// 设置瓦片路径
     void setTilePath(const QString &path);
+    /// 设置瓦片缓存数量
+    void setTileCacheCount(const int &count);
 
 signals:
     void tileToAdd(QGraphicsItem *tile);
