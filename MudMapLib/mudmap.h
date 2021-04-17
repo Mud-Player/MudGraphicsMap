@@ -1,6 +1,7 @@
 ﻿#ifndef MUDMAP_H
 #define MUDMAP_H
 
+#include "mudmaplib_global.h"
 #include <QWidget>
 #include <QGraphicsView>
 #include <QWheelEvent>
@@ -11,7 +12,7 @@ class MudMapThread;
  * \brief 基于Graphics View的地图
  * \details 其仅用于显示瓦片地图
  */
-class MudMap : public QGraphicsView
+class MUDMAPLIBSHARED_EXPORT MudMap : public QGraphicsView
 {
     Q_OBJECT
 

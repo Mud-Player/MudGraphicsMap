@@ -1,0 +1,12 @@
+﻿#ifndef SIMULATIONLIB_GLOBAL_H
+#define SIMULATIONLIB_GLOBAL_H
+
+#include <QtCore/qglobal.h>
+
+#if defined(MUDMAPLIB_LIBRARY)
+#  define MUDMAPLIBSHARED_EXPORT Q_DECL_EXPORT
+#else
+#  define MUDMAPLIBSHARED_EXPORT  Q_DECL_IMPORT
+#endif
+
+#endif // SIMULATIONLIB_GLOBAL_H
