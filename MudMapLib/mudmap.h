@@ -10,13 +10,14 @@
 class MudMapThread;
 /*!
  * \brief 基于Graphics View的地图
- * \details 其仅用于显示瓦片地图
+ * \details 其仅用于显示瓦片地图，要实现地图以外的功能可以继承该类
  */
 class MUDMAPLIBSHARED_EXPORT MudMap : public QGraphicsView
 {
     Q_OBJECT
 
 public:
+    /// 瓦片参数描述结构体
     struct TileSpec {
         int zoom;
         int x;
@@ -34,6 +35,8 @@ public:
     void setZoomLevel(const float &zoom);
     /// 设置瓦片缓存数量
     void setTileCacheCount(const int &count);
+    /// 设置是否Y轴瓦片编号(标准下载的瓦片Y轴编号都是自上而下增加，不过某些情况可能是反的)
+    void setYInverted(const bool &isInverted);
 
 signals:
     void tileRequested(const MudMap::TileSpec &topLeft, const MudMap::TileSpec &bottomRight);
@@ -83,6 +86,8 @@ public slots:
     void setTilePath(const QString &path);
     /// 设置瓦片缓存数量
     void setTileCacheCount(const int &count);
+    /// 设置是否Y轴瓦片编号(标准下载的瓦片Y轴编号都是自上而下增加，不过某些情况可能是反的)
+    void setYInverted(const bool &isInverted);
 
 signals:
     void tileToAdd(QGraphicsItem *tile);
@@ -103,6 +108,7 @@ private:
     MudMap::TileSpec m_preTopLeft;
     MudMap::TileSpec m_preBottomRight;
     QString          m_path;
+    bool             m_yInverted;
 };
 
 #endif // MUDMAP_H

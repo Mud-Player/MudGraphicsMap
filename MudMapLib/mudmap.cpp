@@ -90,6 +90,11 @@ void MudMap::setTileCacheCount(const int &count)
     m_mapThread->setTileCacheCount(count);
 }
 
+void MudMap::setYInverted(const bool &isInverted)
+{
+    m_mapThread->setYInverted(isInverted);
+}
+
 void MudMap::wheelEvent(QWheelEvent *e)
 {
     bool increase = e->angleDelta().y() > 0;
@@ -103,7 +108,7 @@ void MudMap::wheelEvent(QWheelEvent *e)
 void MudMap::mouseMoveEvent(QMouseEvent *event)
 {
     QGraphicsView::mouseMoveEvent(event);
-    // as for QGrahpicsView, the move event will be generated whether press event happens
+    // as for QGrahpicsView, the move event will be generated whether press event happens when "setTransformationAnchor(QGraphicsView::AnchorUnderMouse)"
     if(!event->buttons())
         return;
 
@@ -140,7 +145,8 @@ MudMapThread::TileCacheNode::~TileCacheNode()
 
 MudMapThread::MudMapThread() :
     m_preTopLeft({0, 0, 0}),
-    m_preBottomRight({0, 0, 0})
+    m_preBottomRight({0, 0, 0}),
+    m_yInverted(false)
 {
     m_tileCache.setMaxCost(1000);
     //
@@ -244,6 +250,11 @@ void MudMapThread::setTileCacheCount(const int &count)
     m_tileCache.setMaxCost(count);
 }
 
+void MudMapThread::setYInverted(const bool &isInverted)
+{
+    m_yInverted = isInverted;
+}
+
 void MudMapThread::showItem(const MudMap::TileSpec &tileSpec)
 {
     if(m_tileShowedSet.contains(tileSpec))
@@ -283,7 +294,7 @@ QGraphicsPixmapItem *MudMapThread::loadTileItem(const MudMap::TileSpec &tileSpec
             .arg(m_path)
             .arg(tileSpec.zoom)
             .arg(tileSpec.x)
-            .arg(tileCount - tileSpec.y -1);
+            .arg(m_yInverted ? tileCount - tileSpec.y - 1 : tileSpec.y);
     if(!QFileInfo::exists(fileName))
         return nullptr;
 
