@@ -8,6 +8,10 @@
 #include <QThread>
 #include <QFileInfo>
 
+#define ZOOM_BASE 10  ///< ZOOM_BASE级瓦片正好缩放为原比例(1:1),低于ZOOM_BASE级的放大，反之缩小
+#define TILE_LEN 256  ///< 瓦片长度，标准的都是256 * 256
+#define SCENE_LEN ((1<<ZOOM_BASE) * TILE_LEN)   ///< 存放瓦片的场景大小
+
 MudMap::TileSpec MudMap::TileSpec::rise() const
 {
     return MudMap::TileSpec({this->zoom-1, this->x/2, this->y/2});
@@ -27,11 +31,12 @@ bool MudMap::TileSpec::operator==(const MudMap::TileSpec &rhs) const
 
 MudMap::MudMap(QGraphicsScene *scene) : QGraphicsView(scene),
     m_isloading(false),
-    m_hasPendingLoad(false)
+    m_hasPendingLoad(false),
+    m_zoom(1)
 {
     qRegisterMetaType<MudMap::TileSpec>("MudMap::TileSpec");
-    m_mapThread = new MudMapThread;
     //
+    m_mapThread = new MudMapThread;
     connect(this, &MudMap::tileRequested, m_mapThread, &MudMapThread::requestTile, Qt::QueuedConnection);
     connect(m_mapThread, &MudMapThread::tileToAdd, this->scene(), &QGraphicsScene::addItem, Qt::QueuedConnection);
     connect(m_mapThread, &MudMapThread::tileToRemove, this->scene(), &QGraphicsScene::removeItem, Qt::QueuedConnection);
@@ -44,7 +49,9 @@ MudMap::MudMap(QGraphicsScene *scene) : QGraphicsView(scene),
             m_hasPendingLoad = false;
         }
     }, Qt::QueuedConnection);
-    this->scene()->setSceneRect(0, 0, 256, 256);
+    //
+    this->scene()->setSceneRect(0, 0, SCENE_LEN, SCENE_LEN);
+    setZoomLevel(2);
 }
 
 MudMap::~MudMap()
@@ -61,27 +68,26 @@ void MudMap::setTilePath(const QString &path)
     m_mapThread->setTilePath(path);
 }
 
-void MudMap::wheelEvent(QWheelEvent *e)
+void MudMap::setZoomLevel(const float &zoom)
 {
-    const qreal scaleBase = 1.2f;
-    const qreal minScale = 1 << 0;   // zoom level 0
-    const qreal maxScale = 1 << 20;  // zoom level 20
-    qreal curScale = transform().m11();
+    m_zoom = qBound(0.0f, zoom, 20.0f);
+    auto zoomLevelDiff = m_zoom - ZOOM_BASE;
+    auto scaleValue = qPow(2, zoomLevelDiff);
+    setTransform(QTransform::fromScale(scaleValue, scaleValue));
     //
-    qreal sign = e->angleDelta().y() > 0 ? 1 : -1;
-    qreal scaleFac = (qAbs(e->angleDelta().y()) / 120.0) * (scaleBase - 1) + 1; // 0~120 tranlate to 1~base
-    if(sign > 0) { // zoom in
-        scaleFac = qMin(scaleFac, maxScale / curScale);
-    }
-    else { // zoom out
-        scaleFac = 1 / scaleFac;
-        scaleFac = qMax(scaleFac, minScale / curScale);
-    }
-    this->scale(scaleFac, scaleFac);
     if(m_isloading)
         m_hasPendingLoad = true;
     else
         updateTile();
+}
+
+void MudMap::wheelEvent(QWheelEvent *e)
+{
+    bool increase = e->angleDelta().y() > 0;
+    if(increase > 0)
+        this->setZoomLevel(m_zoom + 0.2);
+    else
+        this->setZoomLevel(m_zoom - 0.2);
     e->accept();
 }
 
@@ -100,20 +106,19 @@ void MudMap::mouseMoveEvent(QMouseEvent *event)
 
 void MudMap::updateTile()
 {
-    qreal curZoom = qLn(transform().m11()) / qLn(2);
-    int intZoom = qFloor(curZoom+0.5);
+    int intZoom = qFloor(m_zoom+0.5);
     //
-    int tileLen = qPow(2, intZoom);
+    int tileCount = qPow(2, intZoom);
     auto topLeftPos = mapToScene(viewport()->geometry().topLeft());
     auto bottomRightPos = mapToScene(viewport()->geometry().bottomRight());
-    int xBegin = topLeftPos.x() / 256 * tileLen - 1;
-    int yBegin = topLeftPos.y() / 256 * tileLen - 1;
-    int xEnd = bottomRightPos.x() / 256 * tileLen + 1;
-    int yEnd = bottomRightPos.y() / 256 * tileLen + 1;
+    int xBegin = topLeftPos.x() / SCENE_LEN * tileCount - 1;
+    int yBegin = topLeftPos.y() / SCENE_LEN * tileCount - 1;
+    int xEnd = bottomRightPos.x() / SCENE_LEN * tileCount + 1;
+    int yEnd = bottomRightPos.y() / SCENE_LEN * tileCount + 1;
     if(xBegin < 0) xBegin = 0;
     if(yBegin < 0) yBegin = 0;
-    if(xEnd >= tileLen) xEnd = tileLen - 1;
-    if(yEnd >= tileLen) yEnd = tileLen - 1;
+    if(xEnd >= tileCount) xEnd = tileCount - 1;
+    if(yEnd >= tileCount) yEnd = tileCount - 1;
     m_isloading = true;
     emit tileRequested({intZoom, xBegin, yBegin}, {intZoom, xEnd, yEnd});
 
@@ -250,16 +255,21 @@ void MudMapThread::hideItem(const MudMap::TileSpec &tileSpec)
     }
 }
 
+/*!
+ * \brief MudMapThread::loadTileItem
+ * \note QTransform的srt顺序对结果有影响，并且和三维矩阵用法不一样，
+ * 在该函数实现中，先scale再translate，可以理解成将瓦片按照原始大小排列在矩形中(比如1层有四张瓦片，那么排列在256*4->256*4的矩形中)，
+ * 然后这个矩形从右下角整个向左上角缩放达到和sceneRect()正好重合，以实现所有不同zoom的瓦片都重叠在sceneRect()上，也达到了缺省瓦片通过上层瓦片显示的效果
+ */
 QGraphicsPixmapItem *MudMapThread::loadTileItem(const MudMap::TileSpec &tileSpec)
 {
-    const int tileOff = 256;
-    int tileLen = qPow(2, tileSpec.zoom);
+    int tileCount = qPow(2, tileSpec.zoom);
     //
     QString fileName = QString("%1/%2/%3/%4.jpg")
             .arg(m_path)
             .arg(tileSpec.zoom)
             .arg(tileSpec.x)
-            .arg(tileLen - tileSpec.y -1);
+            .arg(tileCount - tileSpec.y -1);
     if(!QFileInfo::exists(fileName))
         return nullptr;
 
@@ -267,9 +277,9 @@ QGraphicsPixmapItem *MudMapThread::loadTileItem(const MudMap::TileSpec &tileSpec
     tileItem->setZValue(tileSpec.zoom - 20);
 
     //
-    double xOff = tileOff * tileSpec.x;
-    double yOff = tileOff * tileSpec.y;
-    double scaleFac = 1.0 / tileLen;
+    double xOff = TILE_LEN * tileSpec.x;
+    double yOff = TILE_LEN * tileSpec.y;
+    double scaleFac = 1.0 / qPow(2, (tileSpec.zoom-ZOOM_BASE));
     QTransform transform;
     transform.scale(scaleFac, scaleFac)
             .translate(xOff, yOff);

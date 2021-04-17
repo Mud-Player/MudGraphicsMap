@@ -29,6 +29,8 @@ public:
     ~MudMap();
     /// 设置瓦片路径
     void setTilePath(const QString &path);
+    /// 设置缩放等级
+    void setZoomLevel(const float &zoom);
 
 signals:
     void tileRequested(const MudMap::TileSpec &topLeft, const MudMap::TileSpec &bottomRight);
@@ -46,6 +48,7 @@ private:
     //
     bool m_isloading;
     bool m_hasPendingLoad;
+    float m_zoom;
 };
 
 inline uint qHash(const MudMap::TileSpec &key, uint seed)
