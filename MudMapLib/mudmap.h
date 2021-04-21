@@ -6,6 +6,7 @@
 #include <QGraphicsView>
 #include <QWheelEvent>
 #include <QCache>
+#include <QGeoCoordinate>
 
 class MudMapThread;
 /*!
@@ -35,8 +36,11 @@ public:
     void setZoomLevel(const float &zoom);
     /// 设置瓦片缓存数量
     void setTileCacheCount(const int &count);
-    /// 设置是否Y轴瓦片编号(标准下载的瓦片Y轴编号都是自上而下增加，不过某些情况可能是反的)
+    /// 设置是否反转Y轴瓦片编号(标准下载的瓦片Y轴编号都是自上而下增加，不过某些情况可能是反的)
     void setYInverted(const bool &isInverted);
+    /// 获取窗口坐标对应的经纬度
+    const QGeoCoordinate &toCoordinate(const QPointF &point);
+
 
 signals:
     void tileRequested(const MudMap::TileSpec &topLeft, const MudMap::TileSpec &bottomRight);
