@@ -54,7 +54,7 @@ MudMap::MudMap(QGraphicsScene *scene) : QGraphicsView(scene),
         }
     }, Qt::QueuedConnection);
     //
-    this->scene()->setSceneRect(0, 0, SCENE_LEN, SCENE_LEN);
+    this->scene()->setSceneRect(-SCENE_LEN/2, -SCENE_LEN/2, SCENE_LEN, SCENE_LEN);
     setZoomLevel(2);
 }
 
@@ -125,10 +125,10 @@ void MudMap::updateTile()
     int tileCount = qPow(2, intZoom);
     auto topLeftPos = mapToScene(viewport()->geometry().topLeft());
     auto bottomRightPos = mapToScene(viewport()->geometry().bottomRight());
-    int xBegin = topLeftPos.x() / SCENE_LEN * tileCount - 1;
-    int yBegin = topLeftPos.y() / SCENE_LEN * tileCount - 1;
-    int xEnd = bottomRightPos.x() / SCENE_LEN * tileCount + 1;
-    int yEnd = bottomRightPos.y() / SCENE_LEN * tileCount + 1;
+    int xBegin = (topLeftPos.x()+SCENE_LEN/2) / SCENE_LEN * tileCount - 1;
+    int yBegin = (topLeftPos.y()+SCENE_LEN/2) / SCENE_LEN * tileCount - 1;
+    int xEnd = (bottomRightPos.x()+SCENE_LEN/2) / SCENE_LEN * tileCount + 1;
+    int yEnd = (bottomRightPos.y()+SCENE_LEN/2) / SCENE_LEN * tileCount + 1;
     if(xBegin < 0) xBegin = 0;
     if(yBegin < 0) yBegin = 0;
     if(xEnd >= tileCount) xEnd = tileCount - 1;
@@ -284,7 +284,8 @@ void MudMapThread::hideItem(const MudMap::TileSpec &tileSpec)
  * \brief MudMapThread::loadTileItem
  * \note QTransform的srt顺序对结果有影响，并且和三维矩阵用法不一样，
  * 在该函数实现中，先scale再translate，可以理解成将瓦片按照原始大小排列在矩形中(比如1层有四张瓦片，那么排列在256*4->256*4的矩形中)，
- * 然后这个矩形从右下角整个向左上角缩放达到和sceneRect()正好重合，以实现所有不同zoom的瓦片都重叠在sceneRect()上，也达到了缺省瓦片通过上层瓦片显示的效果
+ * 然后这个矩形从右下角整个向左上角缩放达到和sceneRect()正好重合，以实现所有不同zoom的瓦片都重叠在sceneRect()上，也达到了缺省瓦片通过上层瓦片显示的效果。
+ * 为了方便经纬度和场景坐标的转换，这里将经纬度（0，0）映射在了场景坐标的（0，0）处，所以注意xOff和yOff是先移动到以（0，0）为原点的位置，再向左上移动半个场景的宽度和高度
  */
 QGraphicsPixmapItem *MudMapThread::loadTileItem(const MudMap::TileSpec &tileSpec)
 {
@@ -302,8 +303,8 @@ QGraphicsPixmapItem *MudMapThread::loadTileItem(const MudMap::TileSpec &tileSpec
     tileItem->setZValue(tileSpec.zoom - 20);
 
     //
-    double xOff = TILE_LEN * tileSpec.x;
-    double yOff = TILE_LEN * tileSpec.y;
+    double xOff = TILE_LEN * (tileSpec.x  - tileCount/2.0);     // see also: TILE_LEN * tileSpec.x - (TILE_LEN*tileCount) / 2;
+    double yOff = TILE_LEN * (tileSpec.y  - tileCount/2.0);     // see also: TILE_LEN * tileSpec.y - (TILE_LEN*tileCount) / 2;
     double scaleFac = 1.0 / qPow(2, (tileSpec.zoom-ZOOM_BASE));
     QTransform transform;
     transform.scale(scaleFac, scaleFac)
