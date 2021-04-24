@@ -7,7 +7,7 @@ int main(int argc, char *argv[])
     QApplication a(argc, argv);
     MudMap map(new QGraphicsScene);
     map.setYInverted(true);
-    map.setTilePath("Z:/Arcgis");
+    map.setTilePath("C:/Users/Yshin/Downloads/Arcgis");
     map.setDragMode(QGraphicsView::ScrollHandDrag);
     map.setRenderHint(QPainter::Antialiasing, true);
     map.setOptimizationFlags(QGraphicsView::DontSavePainterState);

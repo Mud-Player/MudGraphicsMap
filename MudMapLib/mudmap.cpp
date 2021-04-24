@@ -7,6 +7,7 @@
 #include <QtMath>
 #include <QThread>
 #include <QFileInfo>
+#include <QtMath>
 
 #define ZOOM_BASE 10  ///< ZOOM_BASE级瓦片正好缩放为原比例(1:1),低于ZOOM_BASE级的放大，反之缩小
 #define TILE_LEN 256  ///< 瓦片长度，标准的都是256 * 256
@@ -93,6 +94,29 @@ void MudMap::setTileCacheCount(const int &count)
 void MudMap::setYInverted(const bool &isInverted)
 {
     m_mapThread->setYInverted(isInverted);
+}
+
+/// \see https://blog.csdn.net/iispring/article/details/8565177
+/// R = SCENE_LEN / 2PI
+QGeoCoordinate MudMap::toCoordinate(const QPoint &point) const
+{
+    /// NOTE: R = SCENE_LEN / 2PI
+    auto scenePos = this->mapToScene(point);
+    auto radLon = scenePos.rx() * 2 * M_PI/ SCENE_LEN;
+    auto radLat = 2 * qAtan(qPow(M_E, 2*M_PI*scenePos.ry()/SCENE_LEN)) - M_PI_2;
+    return  {qRadiansToDegrees(radLon), qRadiansToDegrees(radLat)};
+}
+
+/// \see https://blog.csdn.net/iispring/article/details/8565177
+/// R = SCENE_LEN / 2PI
+QPointF MudMap::fromCoordinate(const QGeoCoordinate &lla) const
+{
+    /// NOTE: R = SCENE_LEN / 2PI
+    auto radLon = qDegreesToRadians(lla.longitude());
+    auto radLat = qDegreesToRadians(lla.latitude());
+    auto x = SCENE_LEN * radLon / 2.0 / M_PI;
+    auto y = SCENE_LEN / 2.0 / M_PI * qLn( qTan(M_PI_4+radLat/2.0) );
+    return {x, y};
 }
 
 void MudMap::wheelEvent(QWheelEvent *e)
