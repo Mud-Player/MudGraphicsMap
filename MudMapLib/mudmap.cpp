@@ -325,6 +325,6 @@ void MudMapThread::createAscendingTileCache(const MudMap::TileSpec &tileSpec, QS
     }
     sets.insert(tileSpec);
 
-    if(!tileCacheItem->value)
+    if(!tileCacheItem->value && tileSpec.zoom != 0)
         createAscendingTileCache(tileSpec.rise(), sets);
 }
